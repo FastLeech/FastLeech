@@ -53,6 +53,7 @@ from .modules import (
     bot_settings,
     help,
     force_start,
+    app,
 )
 
 
@@ -199,6 +200,7 @@ def register_bot_cmds():
     bot.set_bot_commands(
         [
             BotCommand(BotCommands.StartCommand, "Start the bot", True),
+            BotCommand(BotCommands.AppCommand, "Start app", True),
             BotCommand(BotCommands.MirrorCommand[0], "Start mirroring to cloud", True),
             BotCommand(BotCommands.MirrorCommand[1], "Start mirroring to cloud", True),
             BotCommand(

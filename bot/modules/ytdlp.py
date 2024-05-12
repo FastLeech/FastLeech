@@ -1,3 +1,4 @@
+import swibots as s
 from aiohttp import ClientSession
 from asyncio import wait_for, Event
 from functools import partial
@@ -28,6 +29,7 @@ from bot.helper.switch_helper.message_utils import (
 
 @new_task
 async def select_format(ctx, obj):
+    obj: YtSelection
     data = ctx.event.callback_data.split()
     message = ctx.event.message
 
@@ -46,7 +48,12 @@ async def select_format(ctx, obj):
     elif data[1] == "back":
         await obj.back_to_main()
     elif data[1] == "cancel":
-        await editMessage(message, "Task has been cancelled.")
+        if obj.listener.fromApp:
+            await ctx.event.answer(
+                "Task has been cancelled.", show_alert=True
+            )
+        else:
+            await editMessage(message, "Task has been cancelled.")
         obj.qual = None
         obj.listener.isCancelled = True
         obj.event.set()
@@ -62,7 +69,7 @@ async def select_format(ctx, obj):
 
 class YtSelection:
     def __init__(self, listener):
-        self.listener = listener
+        self.listener: YtDlp = listener
         self._is_m4a = False
         self._reply_to = None
         self._time = time()
@@ -82,7 +89,12 @@ class YtSelection:
         try:
             await wait_for(self.event.wait(), timeout=self._timeout)
         except:
-            await editMessage(self._reply_to, "Timed Out. Task has been cancelled!")
+            if self.listener.fromApp:
+                await self.listener.queryEvent.answer(
+                    "Timed Out. Task has been cancelled!", show_alert=True
+                )
+            else:
+                await editMessage(self._reply_to, "Timed Out. Task has been cancelled!")
             self.qual = None
             self.listener.isCancelled = True
             self.event.set()
@@ -90,6 +102,7 @@ class YtSelection:
             self.listener.client.remove_handler(handler)
 
     async def get_quality(self, result):
+        comps = []
         buttons = ButtonMaker()
         if "entries" in result:
             self._is_playlist = True
@@ -97,12 +110,24 @@ class YtSelection:
                 video_format = f"bv*[height<=?{i}][ext=mp4]+ba[ext=m4a]/b[height<=?{i}]"
                 b_data = f"{i}|mp4"
                 self.formats[b_data] = video_format
-                buttons.ibutton(f"{i}-mp4", f"ytq {b_data}")
+                if self.listener.fromApp:
+                    comps.append(
+                        s.Button(f"{i}-mp4", callback_data=f"ytq {b_data}")
+                    )
+                else:
+                    buttons.ibutton(f"{i}-mp4", f"ytq {b_data}")
                 video_format = f"bv*[height<=?{i}][ext=webm]+ba/b[height<=?{i}]"
                 b_data = f"{i}|webm"
                 self.formats[b_data] = video_format
+                if self.listener.fromApp:
+                    comps.append(
+                        s.Button(f"{i}-webm", f"ytq {b_data}")
+                    )
                 buttons.ibutton(f"{i}-webm", f"ytq {b_data}")
             buttons.ibutton("MP3", "ytq mp3")
+            comps.append(
+                        s.Button("MP3", callback_data=f"ytq mp3")
+                    )
             buttons.ibutton("Audio Formats", "ytq audio")
             buttons.ibutton("Best Videos", "ytq bv*+ba/b")
             buttons.ibutton("Best Audios", "ytq ba/b")
@@ -153,21 +178,58 @@ class YtSelection:
                         tbr, v_list = next(iter(tbr_dict.items()))
                         buttonName = f"{b_name} ({get_readable_file_size(v_list[0])})"
                         buttons.ibutton(buttonName, f"ytq sub {b_name} {tbr}")
+                        comps.append(
+                            s.Button(
+                                buttonName, callback_data=f"ytq sub {b_name} {tbr}"
+                            )
+                        )
                     else:
                         buttons.ibutton(b_name, f"ytq dict {b_name}")
-            buttons.ibutton("MP3", "ytq mp3")
-            buttons.ibutton("Audio Formats", "ytq audio")
-            buttons.ibutton("Best Video", "ytq bv*+ba/b")
-            buttons.ibutton("Best Audio", "ytq ba/b")
-            buttons.ibutton("Cancel", "ytq cancel", "footer")
-            self._main_buttons = buttons.build_menu(2)
+                        comps.append(
+                            s.Button(
+                                b_name, callback_data=f"ytq dict {b_name}"
+                            )
+                        )
+            if self.listener.fromApp:
+                comps.extend([
+                s.Button("MP3", callback_data="ytq mp3"),
+                s.Button("Audio Formats", callback_data="ytq audio"),
+                s.Button("Best Video", callback_data="ytq bv*+ba/b"),
+                s.Button("Best Audio", callback_data="ytq ba/b"),
+                s.Button("Cancel", callback_dat="ytq cancel") ])
+                self._main_buttons = comps
+            else:
+                buttons.ibutton("MP3", "ytq mp3")
+                buttons.ibutton("Audio Formats", "ytq audio")
+                buttons.ibutton("Best Video", "ytq bv*+ba/b")
+                buttons.ibutton("Best Audio", "ytq ba/b")
+                buttons.ibutton("Cancel", "ytq cancel", "footer")
+                self._main_buttons = buttons.build_menu(2)
             msg = f"Choose Video Quality:\nTimeout: {get_readable_time(self._timeout - (time() - self._time))}"
-        self._reply_to = await sendMessage(
+        if self.listener.queryEvent:
+            comps.insert(0, s.Text(msg, s.TextSize.SMALL))
+            await self.listener.queryEvent.answer(
+                callback=s.AppPage(
+                    components=comps,
+                    screen=s.ScreenType.BOTTOM,
+                    show_continue=False
+                    
+                ), show_alert=True,
+                
+            )
+        else:
+            self._reply_to = await sendMessage(
             self.listener.message, msg, self._main_buttons
         )
         await self._event_handler()
         if not self.listener.isCancelled:
             await deleteMessage(self._reply_to)
+        if self.listener.fromApp:
+            from .app import onHome
+            query = self.listener.queryEvent
+            query.callback_data = "Downloader|self"
+            await onHome(s.BotContext(app=bot, event=query), from_app=True)
+
         return self.qual
 
     async def back_to_main(self):
@@ -175,7 +237,22 @@ class YtSelection:
             msg = f"Choose Playlist Videos Quality:\nTimeout: {get_readable_time(self._timeout - (time() - self._time))}"
         else:
             msg = f"Choose Video Quality:\nTimeout: {get_readable_time(self._timeout - (time() - self._time))}"
-        await editMessage(self._reply_to, msg, self._main_buttons)
+        if self.listener.fromApp:
+            comps = [
+                        s.Text(msg)
+                    ]
+            if self._main_buttons:
+                comps.extend(self._main_buttons)
+
+            await self.listener.queryEvent.answer(
+                callback=s.AppPage(
+                    components=comps,
+                    screen=s.ScreenType.BOTTOM,
+                    show_continue=False
+                )
+            )
+        else:
+            await editMessage(self._reply_to, msg, self._main_buttons)
 
     async def qual_subbuttons(self, b_name):
         buttons = ButtonMaker()
@@ -190,17 +267,44 @@ class YtSelection:
         await editMessage(self._reply_to, msg, subbuttons)
 
     async def mp3_subbuttons(self):
+        comps = []
         i = "s" if self._is_playlist else ""
         buttons = ButtonMaker()
         audio_qualities = [64, 128, 320]
         for q in audio_qualities:
             audio_format = f"ba/b-mp3-{q}"
-            buttons.ibutton(f"{q}K-mp3", f"ytq {audio_format}")
-        buttons.ibutton("Back", "ytq back")
-        buttons.ibutton("Cancel", "ytq cancel")
-        subbuttons = buttons.build_menu(3)
+            if self.listener.fromApp:
+                comps.append(
+                    s.Button(f"{q}K-mp3", callback_data=f"ytq {audio_format}")
+                )
+            else:
+                buttons.ibutton(f"{q}K-mp3", f"ytq {audio_format}")
         msg = f"Choose mp3 Audio{i} Bitrate:\nTimeout: {get_readable_time(self._timeout - (time() - self._time))}"
-        await editMessage(self._reply_to, msg, subbuttons)
+        if self.listener.fromApp:
+            comps.insert(0,
+                s.Text(msg)
+            )
+            comps.append(
+                s.ButtonGroup(
+                    [
+                        s.Button("Back", callback_data="ytq back"),
+                        s.Button("Cancel", callback_data="ytq cancel")
+                    ]
+                )
+            )
+            if self.listener.queryEvent:
+                await self.listener.queryEvent.answer(
+                    callback=s.AppPage(
+                        components=comps,
+                        screen=s.ScreenType.BOTTOM
+                    )
+                )
+        else:
+            buttons.ibutton("Back", "ytq back")
+            buttons.ibutton("Cancel", "ytq cancel")
+            subbuttons = buttons.build_menu(3)
+            await editMessage(self._reply_to, msg, subbuttons)
+
 
     async def audio_format(self):
         i = "s" if self._is_playlist else ""
@@ -216,15 +320,42 @@ class YtSelection:
 
     async def audio_quality(self, format):
         i = "s" if self._is_playlist else ""
+        comps = []
         buttons = ButtonMaker()
         for qual in range(11):
             audio_format = f"{format}{qual}"
-            buttons.ibutton(qual, f"ytq {audio_format}")
-        buttons.ibutton("Back", "ytq aq back")
-        buttons.ibutton("Cancel", "ytq aq cancel")
-        subbuttons = buttons.build_menu(5)
+            if self.listener.fromApp:
+                comps.append(
+                    s.Button(
+                        qual, callback_data=f"ytq {audio_format}"
+                    )
+                )
+            else:
+                buttons.ibutton(qual, f"ytq {audio_format}")
         msg = f"Choose Audio{i} Qaulity:\n0 is best and 10 is worst\nTimeout: {get_readable_time(self._timeout - (time() - self._time))}"
-        await editMessage(self._reply_to, msg, subbuttons)
+        if self.listener.fromApp:
+            buttons.ibutton("Back", "ytq aq back")
+            buttons.ibutton("Cancel", "ytq aq cancel")
+            subbuttons = buttons.build_menu(5)
+            await editMessage(self._reply_to, msg, subbuttons)
+        else:
+            comps.append(
+                s.ButtonGroup(
+                    [
+                        s.Button(
+                            "Back", callback_data="ytq aq back"
+                        ),
+                        s.Button(f"Cancel", callback_data="ytq aq cancel")
+                    ]
+                )
+            )
+            await self.listener.queryEvent.answer(
+                callback=s.AppPage(
+                    components=comps,
+                    show_continue=False,
+                    screen=s.ScreenType.BOTTOM
+                )
+            )
 
 
 def extract_info(link, options):
@@ -261,6 +392,8 @@ class YtDlp(TaskListener):
         bulk=None,
         multiTag=None,
         options="",
+        fromApp=False,
+        queryEvent=None
     ):
         if sameDir is None:
             sameDir = {}
@@ -275,6 +408,8 @@ class YtDlp(TaskListener):
         super().__init__()
         self.isYtDlp = True
         self.isLeech = isLeech
+        self.fromApp = fromApp
+        self.queryEvent = queryEvent
 
     @new_task
     async def newEvent(self):
@@ -371,9 +506,12 @@ class YtDlp(TaskListener):
             self.link = reply_to.message.split("\n", 1)[0].strip()
 
         if not is_url(self.link):
-            await sendMessage(
+            if self.fromApp:
+                await self.queryEvent.answer(COMMAND_USAGE["yt"][0], show_alert=True)
+            else:
+                await sendMessage(
                 self.message, COMMAND_USAGE["yt"][0], COMMAND_USAGE["yt"][1]
-            )
+                )
             self.removeFromSameDir()
             return
 
@@ -383,7 +521,7 @@ class YtDlp(TaskListener):
         try:
             await self.beforeStart()
         except Exception as e:
-            await sendMessage(self.message, e)
+            await sendMessage(self.message, str(e))
             self.removeFromSameDir()
             return
 

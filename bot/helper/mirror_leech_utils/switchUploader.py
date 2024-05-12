@@ -18,9 +18,12 @@ from re import sub as re_sub
 from natsort import natsorted
 from aioshutil import copy
 
-from bot import config_dict, bot
+from bot import config_dict, bot, appTaskHolder
+from bot.helper.ext_utils.db_handler import DATABASE_URL, DbManager
 from bot.helper.ext_utils.files_utils import clean_unwanted, get_mime_type
 from bot.helper.ext_utils.bot_utils import sync_to_async
+from datetime import datetime
+from bot.helper.mirror_leech_utils.status_utils.switch_status import SwitchStatus
 from bot.helper.ext_utils.media_utils import (
     get_document_type,
     get_audio_thumb,
@@ -41,6 +44,7 @@ class SwUploader:
         self._total_files = 0
         self._thumb = f"Thumbnails/{self._listener.userId}.jpg"
         self._corrupted = 0
+        self._files = []
         self._up_path = ""
         self._lprefix = ""
         self._sent_msg = None
@@ -114,10 +118,21 @@ class SwUploader:
         res = await self._msg_to_reply()
         if not res:
             return
+
+        listener = self._listener
+
+        fileMap = {
+            "name": listener.name,
+            "size": listener.size,
+            "link": listener.link,
+            "stamp": datetime.now().timestamp()
+        }
+
         for dirpath, _, files in natsorted(await sync_to_async(walk, self._path)):
             if dirpath.endswith("/yt-dlp-thumb"):
                 continue
             for file_ in natsorted(files):
+                print(file_)
                 delete_file = False
                 self._up_path = ospath.join(dirpath, file_)
                 if self._up_path in ft_delete:
@@ -175,6 +190,12 @@ class SwUploader:
             )
             return
         LOGGER.info(f"Leech Completed: {self._listener.name}")
+        fileMap["files"] = self._files
+        appTaskHolder[int(listener.mid)] = fileMap
+        print(195, appTaskHolder)
+
+        if DATABASE_URL:
+            await DbManager().add_user_history(user_id=listener.userId, data=fileMap)
         await self._listener.onUploadComplete(
             None, None, self._total_files, self._corrupted
         )
@@ -216,6 +237,15 @@ class SwUploader:
             task_count=10,
             media_type=7 if self._listener.asDoc else None,
         )
+        fileInfo = self._sent_msg.media_info
+        if fileInfo:
+            self._files.append({
+            "name": fileInfo.description,
+            "thumb": fileInfo.thumbnail_url,
+            "size": fileInfo.file_size,
+            "id": fileInfo.id,
+            "url": fileInfo.url
+        })
         buttons = ButtonMaker()
         buttons.ubutton("Direct Download Link", self._sent_msg.media_link)
         button = buttons.build_menu()

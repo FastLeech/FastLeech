@@ -64,6 +64,7 @@ queued_up = {}
 non_queued_dl = set()
 non_queued_up = set()
 multi_tags = set()
+appTaskHolder = {}
 
 try:
     if bool(environ.get("_____REMOVE_THIS_LINE_____")):
@@ -345,6 +346,8 @@ NAME_SUBSTITUTE = environ.get("NAME_SUBSTITUTE", "")
 NAME_SUBSTITUTE = "" if len(NAME_SUBSTITUTE) == 0 else NAME_SUBSTITUTE
 
 config_dict = {
+    "APP_COMMUNITY": environ.get("APP_COMMUNITY_ID", ""),
+    "APP_GROUP": environ.get("APP_GROUP_ID", ""),
     "AS_DOCUMENT": AS_DOCUMENT,
     "AUTHORIZED_CHATS": AUTHORIZED_CHATS,
     "BASE_URL": BASE_URL,

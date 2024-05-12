@@ -157,6 +157,25 @@ class DbManager:
             del data["token_pickle"]
         await self._db.users.replace_one({"_id": user_id}, data, upsert=True)
         self._conn.close
+    
+    async def get_user_history(self, user_id):
+        user = await self._db.users.find_one({"_id": user_id})
+        if not user:
+            return []
+        return user.get("history", [])
+
+    async def add_user_history(self, user_id, data):
+        user = await self._db.users.find_one({"_id": user_id})
+        if not user:
+            user = {}
+        history = user.get("history", [])
+        if data in history:
+            del history[history.index(data)]
+        history.insert(0, data)
+        user["history"] = history
+
+        await self._db.users.replace_one({"_id": user_id}, user, upsert=True)
+
 
     async def update_user_doc(self, user_id, key, path=""):
         if self._err:

@@ -266,7 +266,7 @@ class Mirror(TaskListener):
         try:
             await self.beforeStart()
         except Exception as e:
-            await sendMessage(self.message, e)
+            await sendMessage(self.message, str(e))
             self.removeFromSameDir()
             return
 
