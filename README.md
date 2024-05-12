@@ -208,6 +208,13 @@ quotes, even if it's `Int`, `Bool` or `List`.
 
 - `BOT_TOKEN`: The Switch Bot Token that you got from Bot Apps. `Str`
 - `OWNER_ID`: The Switch User ID (not username) of the Owner of the bot. `Int`
+- `DATABASE_URL`: Your Mongo Database URL (Connection string). Follow
+  this [Generate Database](https://github.com/anasty17/mirror-leech-switch-bot/tree/master#generate-database) to
+  generate database. Data will be saved in Database: auth and sudo users, users settings including thumbnails for each
+  user, rss data and incomplete tasks. **NOTE**: You can always edit all settings that saved in database from the
+  official site -> (Browse collections). `Str`
+- `APP_COMMUNITY_ID`: Community ID where app is linked to.
+- `APP_GROUP_ID`: Group ID
 
 **2. Optional Fields**
 
@@ -218,11 +225,6 @@ quotes, even if it's `Int`, `Bool` or `List`.
 - `TG_SESSION_STRING`: To download from your telegram account with tg links. To generate
   session string use this command `python3 generate_string_session.py` after mounting repo folder for sure. `Str`. *
   *NOTE**: You can't use bot with private message. Use it with superGroup.
-- `DATABASE_URL`: Your Mongo Database URL (Connection string). Follow
-  this [Generate Database](https://github.com/anasty17/mirror-leech-switch-bot/tree/master#generate-database) to
-  generate database. Data will be saved in Database: auth and sudo users, users settings including thumbnails for each
-  user, rss data and incomplete tasks. **NOTE**: You can always edit all settings that saved in database from the
-  official site -> (Browse collections). `Str`
 - `DOWNLOAD_DIR`: The path to the local folder where the downloads should be downloaded to. `Str`
 - `CMD_SUFFIX`: commands index number. This number will added at the end all commands. `Str`|`Int`
 - `AUTHORIZED_CHATS`: Fill user_id and chat_id of groups/users you want to authorize. Separate them by space. `Int`
