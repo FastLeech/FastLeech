@@ -307,7 +307,7 @@ async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
                 thumb=thumb,
                 callback_data=f"detail|{cextrar}|{gid}",
                 subtitle="",
-                progress=ListTileProgress(color="#2F80ED", progress=int(float(progress[:-1]))),
+                progress=ListTileProgress(color="#2F80ED", progress=int(float(progress[:-1] or 0))),
                 subtitle_extra=f"Progress: {progress}",
             )
         )
