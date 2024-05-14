@@ -132,7 +132,6 @@ class SwUploader:
             if dirpath.endswith("/yt-dlp-thumb"):
                 continue
             for file_ in natsorted(files):
-                print(file_)
                 delete_file = False
                 self._up_path = ospath.join(dirpath, file_)
                 if self._up_path in ft_delete:

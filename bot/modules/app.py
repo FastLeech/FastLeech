@@ -7,6 +7,7 @@ from datetime import datetime
 from bot import appTaskHolder, DOWNLOAD_DIR, botStartTime, user_data
 from time import time
 from aiohttp import ClientSession
+from base64 import b16encode
 from random import randint
 from bot.helper.login import get_tg_auth_result
 import asyncio
@@ -37,6 +38,7 @@ bot.app_bar = AppBar(
 )
 
 TG_API_URL = getenv("TG_API_URL", "")
+TG_BOT_USERNAME = getenv("TG_BOT_USERNAME", "")
 
 def parseYTDL_SUPPORTED():
     siteNames = []
@@ -350,7 +352,7 @@ async def leechDetailPage(ctx: BotContext[CallbackQueryEvent], fs=True):
         task = await get(f"/task?id={gID}")
     else:
         task: Aria2Status = await getTaskByGid(gid=gID)
-    print(task)
+#    print(task)
 
     img = Image("https://media.tenor.com/z1-2owqaCVkAAAAj/impatient-kitty.gif")
 
@@ -364,7 +366,7 @@ async def leechDetailPage(ctx: BotContext[CallbackQueryEvent], fs=True):
     else:
         results = appTaskHolder.get(int(MID))
 
-    if task:
+    if task and (getattr(task, 'status', None) or (isinstance(task, dict) and task.get('status'))):
         leechers, seeders = None, None
 
         if isinstance(task, dict):
@@ -446,7 +448,7 @@ async def leechDetailPage(ctx: BotContext[CallbackQueryEvent], fs=True):
                     thumb=file.get("thumb")
                     or "https://img.icons8.com/?size=80&id=dankAbX6G5AT&format=png",
                     description=f"Size: {get_readable_file_size(file.get('size'))}",
-                    callback_data=f"file|{file.get('id')}",
+                    callback_data=f"stream|{file['chatId']}:{file['messageId']}:{file['name']}" if file.get("messageId") else f"file|{file.get('id')}",
                 )
             )
         if tiles:
@@ -735,6 +737,11 @@ async def streamTelegramFile(ctx: BotContext[CallbackQueryEvent]):
         comps.append(
             Button("Download Now", url= f"{TG_API_URL}/stream?channel={channel}&messageId={MessageId}"       )
         )
+    encodeId = b16encode(f"{channel}:{MessageId}".encode()).decode()
+    comps.append(
+        Button("View on Telegram",
+               url=f"https://t.me/{TG_BOT_USERNAME}?start={encodeId}")
+    )
     await ctx.event.answer(
         callback=AppPage(
             components=comps
