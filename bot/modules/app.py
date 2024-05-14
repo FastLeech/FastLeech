@@ -4,9 +4,11 @@ from swibots import Message
 from psutil import virtual_memory, cpu_percent, disk_usage
 from inspect import iscoroutinefunction
 from datetime import datetime
-from bot import appTaskHolder, DOWNLOAD_DIR, botStartTime
+from bot import appTaskHolder, DOWNLOAD_DIR, botStartTime, user_data
 from time import time
+from aiohttp import ClientSession
 from random import randint
+from bot.helper.login import get_tg_auth_result
 import asyncio
 from builtins import filter
 from bot.helper.ext_utils.status_utils import (
@@ -18,6 +20,7 @@ from bot.helper.ext_utils.status_utils import (
     sync_to_async,
     get_readable_time,
 )
+from bot import user_data
 from bot import bot, LOGGER, config_dict, task_dict, task_dict_lock, DATABASE_URL
 from bot.helper.ext_utils.db_handler import DbManager
 from bot.helper.switch_helper.bot_commands import BotCommands
@@ -25,7 +28,7 @@ from bot.helper.mirror_leech_utils.status_utils.aria2_status import Aria2Status
 from bot.helper.switch_helper.filters import CustomFilters
 from bot.helper.ext_utils.status_utils import get_readable_file_size
 from psutil import virtual_memory, cpu_percent, disk_usage
-
+from os import getenv
 
 bot.app_bar = AppBar(
     title="Leech X",
@@ -33,6 +36,7 @@ bot.app_bar = AppBar(
     secondary_icon="https://f004.backblazeb2.com/file/switch-bucket/43afabf4-0edc-11ef-b248-d41b81d4a9f0.png",
 )
 
+TG_API_URL = getenv("TG_API_URL", "")
 
 def parseYTDL_SUPPORTED():
     siteNames = []
@@ -80,7 +84,6 @@ def getBottomBar(page: str):
             )
             for tile, data in {
                 "Home": {
-                    "clb": "Home|self",
                     "selected": "https://f004.backblazeb2.com/file/switch-bucket/3f0b3c14-0edc-11ef-97a0-d41b81d4a9f0.png",
                     "icon": "https://f004.backblazeb2.com/file/switch-bucket/41c8da8a-0edc-11ef-ac63-d41b81d4a9f0.png",
                 },
@@ -95,6 +98,13 @@ def getBottomBar(page: str):
             }.items()
         ]
     )
+
+async def get(path):
+    async with ClientSession(
+         base_url=TG_API_URL,
+    ) as ses:
+        async with ses.get(path) as res:
+            return await res.json()
 
 
 async def manageUpdatePage(
@@ -133,9 +143,14 @@ async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
 
     comps = []
     if "|" not in CLB or not CLB.startswith(("Home", "Downloader")):
-        CLB = f"{page_clb}|self"
+        if TG_API_URL:
+            CLB = f"{page_clb}|switch"
+        else:
+            CLB = f"{page_clb}|self"
 
     userId = ctx.event.action_by_id
+    user_dict = user_data.get(userId)
+
     uconf = appConf.get(userId, {})
     #    if not uconf:
     #        uconf[userId] = {}
@@ -206,6 +221,17 @@ async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
                 ),
             ]
         )
+    if TG_API_URL:
+        tabOptions = {
+            "Switch": f"{page_clb}|switch",
+            "Telegram": f"{page_clb}|telegram"
+        }
+    else:
+        tabOptions = {
+                        "Your tasks": f"{page_clb}|self",
+                        "Other tasks": f"{page_clb}|other",
+                       
+        }
     comps.extend(
         [
             Button(
@@ -220,11 +246,9 @@ async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
                         callback_data=clb,
                         color="#2F80ED" if clb == CLB else "#000000",
                     )
-                    for text, clb in {
-                        "Your tasks": f"{page_clb}|self",
-                        "Other tasks": f"{page_clb}|other",
-                    }.items()
-                ]
+                    for text, clb in tabOptions.items()
+                ],
+                flexible=True
             ),
         ]
     )
@@ -234,20 +258,40 @@ async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
 
     if userOnly:
         tasks = await sync_to_async(getSpecificTasks, "All", ctx.event.action_by_id)
+    elif "|telegram" in CLB and TG_API_URL:
+        print(TG_API_URL)
+        tasks = await get("/tasks")
+        tasks = tasks['tasks']
     else:
         tasks = await getAllTasks("All", None)
-        tasks = list(filter(lambda task: task.listener.userId != userId, tasks))
+        if "|other" in CLB:
+            tasks = list(filter(lambda task: task.listener.userId != userId, tasks))
 
     for task in tasks:
-        task: Aria2Status
-        progress = (
-            await task.progress()
-            if iscoroutinefunction(task.progress)
-            else task.progress()
-        )
+        if isinstance(task, dict):
+            progress = task.get('progress', '')
+            status = task.get('status', '')
+            name = task.get('name' , '')
+            prc_bytes = task.get("processed_bytes", '')
+            gid = task['gid']
+            size = task.get("size", "")
+            cextrar = "telegram"
+        else:
+            task: Aria2Status
+            progress = (
+                await task.progress()
+                if iscoroutinefunction(task.progress)
+                else task.progress()
+                )
 
-        listener = task.listener
-        status = await sync_to_async(task.status)
+            listener = task.listener
+            gid = task.gid()
+            name = listener.name
+            status = await sync_to_async(task.status)
+            prc_bytes = task.processed_bytes()
+            size = task.size()
+            cextrar = task.listener.mid
+
         thumbMap = {
             "Download": "https://f004.backblazeb2.com/file/switch-bucket/28dc28f9-0edc-11ef-a65b-d41b81d4a9f0.png",
             "Upload": "https://f004.backblazeb2.com/file/switch-bucket/3cf91693-0edc-11ef-8772-d41b81d4a9f0.png",
@@ -256,10 +300,10 @@ async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
         thumb = thumbMap.get(status) or thumbMap["Seed"]
         taskList.append(
             ListTile(
-                (f"[{progress}] " if progress else "") + listener.name[:42] + "...",
-                description=f"{status} | {task.processed_bytes()}/{task.size()}",
+                (f"[{progress}] " if progress else "") + name[:42] + "...",
+                description=f"{status} | {prc_bytes}/{size}",
                 thumb=thumb,
-                callback_data=f"detail|{task.listener.mid}|{task.gid()}",
+                callback_data=f"detail|{cextrar}|{gid}",
                 subtitle="",
                 progress=ListTileProgress(color="#2F80ED", progress=int(float(progress[:-1]))),
                 subtitle_extra=f"Progress: {progress}",
@@ -271,6 +315,21 @@ async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
         comps.append(Button("Stop Updating", callback_Data="deleteUpdate"))
     else:
         comps.append(Text("There are no running tasks!"))
+    if TG_API_URL:
+        comps.append(
+            Spacer(y=50)
+        )
+        if tg_user:= user_dict.get("telegramInfo"):
+            name = tg_user['first_name']
+            if tg_user.get('last_name'):
+                name += f" {tg_user['last_name']}"
+            comps.append(
+                Button(f"Logged as {name}", callback_data="tglogin")
+            )
+        else:
+            comps.append(
+            Button("Login Telegram", callback_data="tglogin")
+        )
     page = AppPage(components=comps, bottom_bar=getBottomBar(page_clb))
     #    print(page.to_json())
     await ctx.event.answer(callback=page)
@@ -286,7 +345,12 @@ async def leechDetailPage(ctx: BotContext[CallbackQueryEvent], fs=True):
         stopTask(userId)
 
     MID, gID = ctx.event.callback_data.split("|")[1:]
-    task: Aria2Status = await getTaskByGid(gid=gID)
+    fromTelegram = MID == "telegram"
+    if fromTelegram:
+        task = await get(f"/task?id={gID}")
+    else:
+        task: Aria2Status = await getTaskByGid(gid=gID)
+    print(task)
 
     img = Image("https://media.tenor.com/z1-2owqaCVkAAAAj/impatient-kitty.gif")
 
@@ -295,40 +359,72 @@ async def leechDetailPage(ctx: BotContext[CallbackQueryEvent], fs=True):
         img,
         Spacer(y=50),
     ]
-    results = appTaskHolder.get(int(MID))
+    if fromTelegram:
+        results = task.get("results")
+    else:
+        results = appTaskHolder.get(int(MID))
 
     if task:
-        listener = task.listener
+        leechers, seeders = None, None
 
-        progress = (
-            await task.progress()
-            if iscoroutinefunction(task.progress)
-            else task.progress()
-        )
-        print(173, task, fs)
-        status = await sync_to_async(task.status)
+        if isinstance(task, dict):
+            progress = task.get("progress", "")
+            name = task.get("name", "")
+            prcb = task.get("processed_bytes", "")
+            speed = task.get("speed", "")
+            size = task.get("size", "")
+            status = task.get("status", "")
+            eta = task.get("eta", "")
+            leechers = task.get("leechers_num", "")
+            seeders = task.get("seeders_num", "")
+        else:
+            listener = task.listener
+
+            progress = (
+                await task.progress()
+                if iscoroutinefunction(task.progress)
+                else task.progress()
+            )
+            status = await sync_to_async(task.status)
+            name = task.name()
+            prcb = task.processed_bytes()
+            size = task.size()
+            speed = task.speed()
+            leechers = task.leechers_num()
+            try:
+                seeders = task.seeders_num()
+            except Exception:
+                pass
+            eta = task.eta()
+
         comps.extend(
             [
-                Text(f"*{task.name()}*", TextSize.LARGE),
+                Text(f"*{name}*", TextSize.LARGE),
                 Spacer(y=10),
                 Text(f"*Status:* {status}"),
-                Text(f"*Size:* {task.processed_bytes()}/{task.size()}"),
-                Text(f"*Speed:* {task.speed()}"),
-                Text(f"*ETA:* {task.eta()}"),
+                Text(f"*Size:* {prcb}/{size}"),
+                Text(f"*Speed:* {speed}"),
+                Text(f"*ETA:* {eta}"),
+
             ]
         )
-        print(status)
-        if status == "Download" and hasattr(task, "leechers_num"):
+        if status == "Download" and (leechers or seeders):
             comps.append(
-                Text(f"*Leechers:* {task.leechers_num()}"),
+                Text(f"*Leechers:* {leechers}"),
             )
             try:
-                comps.append(Text(f"*Seeders:* {task.seeders_num()}"))
+                comps.append(Text(f"*Seeders:* {seeders}"))
             except Exception as er:
                 pass
         comps.append(Text(f"*Progress:* {progress}"))
 
-        if not results and int(listener.userId) == int(userId):
+        if fromTelegram:
+            username = task.get("username")
+            comps.append(
+                Text(f"*User:* @{username}")
+            )
+
+        if not fromTelegram and not results and int(listener.userId) == int(userId):
             comps.append(
                 Button("Cancel", color="#f5424b", callback_data=f"cancel|{task.gid()}")
             )
@@ -363,7 +459,7 @@ async def leechDetailPage(ctx: BotContext[CallbackQueryEvent], fs=True):
                 )
             )
             print(tiles)
-    comps.append(Button("Back to Home", callback_data="Home|self"))
+    comps.append(Button("Back to Home", callback_data="Home"))
     comps.append(Spacer(y=15))
 
     await ctx.event.answer(callback=AppPage(components=comps))
@@ -434,7 +530,7 @@ async def onStartTask(ctx: BotContext[CallbackQueryEvent]):
         Leech = not isMirror
         Mirror(ctx.app, message, isQbit=qbit, isLeech=Leech).newEvent()
 
-    ctx.event.callback_data = f"{'Downloader' if downloader else 'Home'}|self"
+    ctx.event.callback_data = f"{'Downloader' if downloader else 'Home'}"
     await asyncio.sleep(3)
     await onHome(ctx, from_app=True)
 
@@ -493,7 +589,7 @@ async def onAppCommand(ctx: BotContext[CommandEvent]):
     await m.reply_text(
         "Click below button to open mini-app",
         inline_markup=InlineMarkup(
-            [[InlineKeyboardButton("Open APP", callback_data="Home|self")]]
+            [[InlineKeyboardButton("Open APP", callback_data="Home")]]
         ),
     )
 
@@ -501,12 +597,47 @@ async def onAppCommand(ctx: BotContext[CommandEvent]):
 async def historyPage(ctx: BotContext[CallbackQueryEvent]):
     """History page from bottom bar"""
     comps = []
+    CLB = ctx.event.callback_data
     userId = ctx.event.action_by_id
     stopTask(userId)
-
-    if DATABASE_URL:
+    user_dict = user_data.get(userId, {})
+    mode = "switch"
+    if "|" in CLB:
+        mode = CLB.split("|")[-1]
+    tab = TabBar(
+        [
+            TabBarTile(
+                title=text,
+                callback_data=clb,
+                selected=clb == CLB
+            )
+            for text, clb in {
+                        "Switch": "History|switch",
+                        "Telegram": "History|telegram"}.items()
+        ],
+        theme_color="#2F80ED",
+        bar_type=TabBarType.BUTTON
+    )
+    if TG_API_URL:
+        comps.append(
+        tab
+    )
+    dbM = []
+    if DATABASE_URL and mode == "switch":
         dbM = await DbManager().get_user_history(user_id=userId)
-        for mirror in dbM:
+    elif mode == "telegram":
+        tg_user = user_dict.get("telegramInfo")
+        if not tg_user:
+            comps.append(
+                Text("Login with telegram to access your files!")
+            )
+        else:
+            print(tg_user)
+            dbM = await get(f"/files?userId={tg_user.get('id')}")
+            print(dbM)
+    else:
+        comps.append(Text("History option is disabled by the bot!"))
+    for mirror in dbM:
             if not mirror.get("files"):
                 continue
             if len(mirror["files"]) > 1:
@@ -519,7 +650,7 @@ async def historyPage(ctx: BotContext[CallbackQueryEvent]):
                     description=f"Size: {get_readable_file_size(file.get('size'))}",
                     thumb=file.get("thumb")
                     or "https://img.icons8.com/?size=80&id=dankAbX6G5AT&format=png",
-                    callback_data=f"file|{file.get('id')}",
+                    callback_data=f"stream|{file['chatId']}:{file['messageId']}:{file['name']}" if file.get("messageId") else f"file|{file.get('id')}",
                 )
                 for file in mirror["files"]
             ]:
@@ -530,9 +661,8 @@ async def historyPage(ctx: BotContext[CallbackQueryEvent]):
                     )
                 )
 
-        print(dbM)
-    else:
-        comps.append(Text("History option is disabled by the bot!"))
+#    print(dbM)
+
     page = AppPage(components=comps, bottom_bar=getBottomBar("History"))
     await ctx.event.answer(callback=page)
 
@@ -580,6 +710,39 @@ async def filePage(ctx: BotContext[CallbackQueryEvent]):
     await ctx.event.answer(callback=AppPage(components=comps), new_page=True)
 
 
+async def streamTelegramFile(ctx: BotContext[CallbackQueryEvent]):
+    channel, MessageId, fileName = ctx.event.callback_data.split("|")[-1].split(":", maxsplit=3)
+    comps = [
+    ]
+    if fileName.endswith((".mkv", ".mp4")):
+        comps.append(
+                    VideoPlayer(
+            url=f"{TG_API_URL}/stream?channel={channel}&messageId={MessageId}",
+            title=fileName
+        )
+
+        )
+    elif fileName.endswith((".png", ".jpeg")):
+        comps.append(
+            Image(
+        f"{TG_API_URL}/stream?channel={channel}&messageId={MessageId}"        
+            )
+        )
+    else:
+        comps.append(
+            Text(fileName, TextSize.MEDIUM)
+        )
+        comps.append(
+            Button("Download Now", url= f"{TG_API_URL}/stream?channel={channel}&messageId={MessageId}"       )
+        )
+    await ctx.event.answer(
+        callback=AppPage(
+            components=comps
+        ),
+        new_page=True
+    )
+
+
 async def supportedList(ctx: BotContext[CallbackQueryEvent]):
     comps = [Text("*Supported Sites*", TextSize.SMALL)]
     comps.extend([Text(f"- {text}") for text in sorted(SUPPORTED_SITES)])
@@ -589,6 +752,35 @@ async def supportedList(ctx: BotContext[CallbackQueryEvent]):
         )
     )
 
+async def telegramLogin(ctx: BotContext[CallbackQueryEvent]):
+    comps = [
+        Embed(
+            f"{TG_API_URL}/login",
+            allow_navigation=True,
+            navigation_callback="onLoginRedirect",
+            view_ratio=100
+        )
+    ]
+    await ctx.event.answer(
+        callback=AppPage(
+            components=comps
+        ),
+    )
+
+async def handleTGLogin(ctx: BotContext[CallbackQueryEvent]):
+    userId = ctx.event.action_by_id
+    
+    url = ctx.event.details.new_url
+    if "tgAuthResult" in url:
+        user = get_tg_auth_result(url)
+        if user:
+            user_dict = user_data.get(userId)
+            del user['hash']
+            user_dict['telegramInfo'] = user
+            if DATABASE_URL:
+                await DbManager().update_user_data(userId)
+
+    await onHome(ctx)
 
 bot.add_handler(
     CommandHandler(
@@ -652,5 +844,28 @@ bot.add_handler(
 bot.add_handler(
     CallbackQueryHandler(
         supportedList, regexp("viewList")  # & CustomFilters.authorized
+    )
+)
+
+
+bot.add_handler(
+    CallbackQueryHandler(
+        handleTGLogin,
+        regexp("onLoginRedirect")
+    )
+)
+
+
+bot.add_handler(
+    CallbackQueryHandler(
+        streamTelegramFile,
+        regexp("stream")
+    )
+)
+
+bot.add_handler(
+    CallbackQueryHandler(
+        telegramLogin,
+        regexp("tglogin")
     )
 )
