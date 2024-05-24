@@ -222,6 +222,8 @@ if len(TG_SESSION_STRING) != 0 and TELEGRAM_HASH and TELEGRAM_API:
 else:
     tg = None
 
+COMPRESS_CRF = int(environ.get("COMPRESS_CRF", 0))
+
 JD_EMAIL = environ.get("JD_EMAIL", "")
 JD_PASS = environ.get("JD_PASS", "")
 if len(JD_EMAIL) == 0 or len(JD_PASS) == 0:
@@ -352,6 +354,7 @@ NAME_SUBSTITUTE = environ.get("NAME_SUBSTITUTE", "")
 NAME_SUBSTITUTE = "" if len(NAME_SUBSTITUTE) == 0 else NAME_SUBSTITUTE
 
 config_dict = {
+    "COMPRESS_CRF": COMPRESS_CRF,
     "APP_COMMUNITY": environ.get("APP_COMMUNITY_ID", ""),
     "APP_GROUP": environ.get("APP_GROUP_ID", ""),
     "AS_DOCUMENT": AS_DOCUMENT,
@@ -407,7 +410,9 @@ config_dict = {
 }
 
 log_info("Creating client from BOT_TOKEN")
-bot = stClient(BOT_TOKEN, "MLSB")
+bot = stClient(BOT_TOKEN, "MLSB",
+               is_app=True,
+               home_callback="Home")
 bot_loop = bot._loop
 bot_name = bot.user.user_name
 
