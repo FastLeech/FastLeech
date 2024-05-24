@@ -885,14 +885,14 @@ bot.add_handler(
 
 bot.add_handler(
     CallbackQueryHandler(
-        telegramLogin,
+        tglogout,
         regexp("tglogout")
     )
 )
 
 bot.add_handler(
     CallbackQueryHandler(
-        tglogout,
+        telegramLogin,
         regexp("tglogin")
     )
 )
