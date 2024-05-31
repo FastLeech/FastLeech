@@ -68,9 +68,10 @@ editTask = {}
 
 
 def stopTask(user):
-    print("stopping", user, 44)
+    print(editTask)
+    LOGGER.info(f"stopping: task  {user}")
     if editTask.get(user):
-        editTask[user].cancel()
+        print(editTask[user].cancel())
         del editTask[user]
 
 
@@ -114,7 +115,7 @@ async def manageUpdatePage(
 ):
     user = ctx.event.action_by_id
 
-    stopTask(user)
+#    stopTask(user)
 
     async def edit_screen():
         while editTask.get(user):
@@ -125,11 +126,11 @@ async def manageUpdatePage(
             else:
                 await onHome(ctx, fs=False)
             await asyncio.sleep(5)
-
-    if start:
-        print(ctx.event.callback_data, "updating")
-        task = asyncio.create_task(edit_screen())
-        editTask[user] = task
+#
+#    if start:
+#        print(ctx.event.callback_data, "updating")
+#        task = asyncio.create_task(edit_screen())
+#        editTask[user] = task
 
 
 async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
@@ -151,7 +152,7 @@ async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
             CLB = f"{page_clb}|self"
 
     userId = ctx.event.action_by_id
-    user_dict = user_data.get(userId)
+    user_dict = user_data.get(userId, {})
 
     uconf = appConf.get(userId, {})
     #    if not uconf:
@@ -314,9 +315,10 @@ async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
 
     if taskList:
         comps.append(ListView(options=taskList))
-        comps.append(Button("Stop Updating", callback_Data="deleteUpdate"))
+        # comps.append(Button("Stop Updating", callback_Data="deleteUpdate"))
     else:
         comps.append(Text("There are no running tasks!"))
+    comps.append(Button("Refresh Status", callback_Data=ctx.event.callback_data))
     if TG_API_URL:
         comps.append(
             Spacer(y=50)
@@ -392,7 +394,10 @@ async def leechDetailPage(ctx: BotContext[CallbackQueryEvent], fs=True):
             prcb = task.processed_bytes()
             size = task.size()
             speed = task.speed()
-            leechers = task.leechers_num()
+            try:
+                leechers = task.leechers_num()
+            except Exception:
+                leechers = 0
             try:
                 seeders = task.seeders_num()
             except Exception:
@@ -581,8 +586,9 @@ async def cancelTask(ctx: BotContext[CallbackQueryEvent]):
         await ctx.event.answer("Task not found!", show_alert=True)
         return
     task = task.task()
-    task.cancel_task()
-    print(task, task.task, task.task())
+    await task.cancel_task()
+    await ctx.event.answer("Task cancelled!", show_alert=True)
+    await onHome(ctx)
 
 
 async def onAppCommand(ctx: BotContext[CommandEvent]):
@@ -760,6 +766,9 @@ async def supportedList(ctx: BotContext[CallbackQueryEvent]):
     )
 
 async def telegramLogin(ctx: BotContext[CallbackQueryEvent]):
+    userId = ctx.event.action_by_id
+    stopTask(userId)
+
     comps = [
         Embed(
             f"{TG_API_URL}/login",
