@@ -410,7 +410,9 @@ config_dict = {
 }
 
 log_info("Creating client from BOT_TOKEN")
-bot = stClient(BOT_TOKEN, "MLSB")
+bot = stClient(BOT_TOKEN, "MLSB",
+               is_app=True,
+               home_callback="Home")
 bot_loop = bot._loop
 bot_name = bot.user.user_name
 

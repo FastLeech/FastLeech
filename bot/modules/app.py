@@ -68,8 +68,9 @@ editTask = {}
 
 
 def stopTask(user):
-    print(editTask)
-    LOGGER.info(f"stopping: task  {user}")
+    LOGGER.info(f"stopping {user} task")
+#    print("stopping", user)
+ #   print(editTask)
     if editTask.get(user):
         print(editTask[user].cancel())
         del editTask[user]
@@ -114,8 +115,7 @@ async def manageUpdatePage(
     ctx: BotContext[CallbackQueryEvent], callback=None, start=True
 ):
     user = ctx.event.action_by_id
-
-#    stopTask(user)
+    stopTask(user)
 
     async def edit_screen():
         while editTask.get(user):
@@ -126,11 +126,10 @@ async def manageUpdatePage(
             else:
                 await onHome(ctx, fs=False)
             await asyncio.sleep(5)
-#
-#    if start:
-#        print(ctx.event.callback_data, "updating")
-#        task = asyncio.create_task(edit_screen())
-#        editTask[user] = task
+
+    if start:
+        task = asyncio.create_task(edit_screen())
+        editTask[user] = task
 
 
 async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
@@ -262,7 +261,6 @@ async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
     if userOnly:
         tasks = await sync_to_async(getSpecificTasks, "All", ctx.event.action_by_id)
     elif "|telegram" in CLB and TG_API_URL:
-        print(TG_API_URL)
         tasks = await get("/tasks")
         tasks = tasks['tasks']
     else:
@@ -328,7 +326,7 @@ async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
             if tg_user.get('last_name'):
                 name += f" {tg_user['last_name']}"
             comps.append(
-                Button(f"Logged as {name}", callback_data="tglogin")
+                Button(f"Logged as {name}", callback_data="tglogout")
             )
         else:
             comps.append(
@@ -465,7 +463,7 @@ async def leechDetailPage(ctx: BotContext[CallbackQueryEvent], fs=True):
                     #                   view_type=ListViewType.LARGE
                 )
             )
-            print(tiles)
+ #           print(tiles)
     comps.append(Button("Back to Home", callback_data="Home"))
     comps.append(Spacer(y=15))
 
@@ -580,14 +578,17 @@ async def cancelTask(ctx: BotContext[CallbackQueryEvent]):
     """function to cancel torrent task"""
     userId = ctx.event.action_by_id
     gid = ctx.event.callback_data.split("|")[-1]
-    print(gid)
+#    print(gid)
     task = await getTaskByGid(gid)
     if not task:
         await ctx.event.answer("Task not found!", show_alert=True)
         return
     task = task.task()
     await task.cancel_task()
-    await ctx.event.answer("Task cancelled!", show_alert=True)
+#    print(task, task.task, task.task())
+    await ctx.event.answer(
+        "Cancelled", show_alert=True
+    )
     await onHome(ctx)
 
 
@@ -640,9 +641,9 @@ async def historyPage(ctx: BotContext[CallbackQueryEvent]):
                 Text("Login with telegram to access your files!")
             )
         else:
-            print(tg_user)
+          #  print(tg_user)
             dbM = await get(f"/files?userId={tg_user.get('id')}")
-            print(dbM)
+         #   print(dbM)
     else:
         comps.append(Text("History option is disabled by the bot!"))
     for mirror in dbM:
@@ -755,6 +756,11 @@ async def streamTelegramFile(ctx: BotContext[CallbackQueryEvent]):
         new_page=True
     )
 
+async def tglogout(ctx: BotContext[CallbackQueryEvent]):
+    await ctx.event.answer(
+        "Logout feature is not yet supported!", show_alert=True
+    )
+
 
 async def supportedList(ctx: BotContext[CallbackQueryEvent]):
     comps = [Text("*Supported Sites*", TextSize.SMALL)]
@@ -790,13 +796,14 @@ async def handleTGLogin(ctx: BotContext[CallbackQueryEvent]):
     if "tgAuthResult" in url:
         user = get_tg_auth_result(url)
         if user:
-            user_dict = user_data.get(userId)
+            user_dict = user_data.get(userId, {})
             del user['hash']
-            user_dict['telegramInfo'] = user
+            if not user_dict:
+                user_data[userId] = {} 
+            user_data[userId]['telegramInfo'] = user
             if DATABASE_URL:
                 await DbManager().update_user_data(userId)
-
-    await onHome(ctx)
+        await onHome(ctx)
 
 bot.add_handler(
     CommandHandler(
@@ -876,6 +883,14 @@ bot.add_handler(
     CallbackQueryHandler(
         streamTelegramFile,
         regexp("stream")
+    )
+)
+
+
+bot.add_handler(
+    CallbackQueryHandler(
+        tglogout,
+        regexp("tglogout")
     )
 )
 
