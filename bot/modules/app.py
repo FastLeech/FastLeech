@@ -316,7 +316,7 @@ async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
         # comps.append(Button("Stop Updating", callback_Data="deleteUpdate"))
     else:
         comps.append(Text("There are no running tasks!"))
-    comps.append(Button("Refresh Status", callback_Data=ctx.event.callback_data))
+    comps.append(Button("Refresh Status", callback_data=ctx.event.callback_data))
     if TG_API_URL:
         comps.append(
             Spacer(y=50)
@@ -434,7 +434,7 @@ async def leechDetailPage(ctx: BotContext[CallbackQueryEvent], fs=True):
                 Button("Cancel", color="#f5424b", callback_data=f"cancel|{task.gid()}")
             )
     #    print(appTaskHolder, MID)
-    comps.append(Button("Refresh Status", callback_Data=ctx.event.callback_data))
+    comps.append(Button("Refresh Status", callback_data=ctx.event.callback_data))
 
     if data := results:
         files = data["files"]
