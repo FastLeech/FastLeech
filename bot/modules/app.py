@@ -127,9 +127,9 @@ async def manageUpdatePage(
                 await onHome(ctx, fs=False)
             await asyncio.sleep(5)
 
-    if start:
-        task = asyncio.create_task(edit_screen())
-        editTask[user] = task
+#    if start:
+#        task = asyncio.create_task(edit_screen())
+#        editTask[user] = task
 
 
 async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
@@ -335,10 +335,10 @@ async def onHome(ctx: BotContext[CallbackQueryEvent], from_app=False, fs=True):
     page = AppPage(components=comps, bottom_bar=getBottomBar(page_clb))
     #    print(page.to_json())
     await ctx.event.answer(callback=page)
-    if fs:
-        await manageUpdatePage(
-            ctx, ctx.event.callback_data, start=bool(taskList) or from_app
-        )
+#    if fs:
+#        await manageUpdatePage(
+#            ctx, ctx.event.callback_data, start=bool(taskList) or from_app
+#        )
 
 
 async def leechDetailPage(ctx: BotContext[CallbackQueryEvent], fs=True):
@@ -434,6 +434,7 @@ async def leechDetailPage(ctx: BotContext[CallbackQueryEvent], fs=True):
                 Button("Cancel", color="#f5424b", callback_data=f"cancel|{task.gid()}")
             )
     #    print(appTaskHolder, MID)
+    comps.append(Button("Refresh Status", callback_Data=ctx.event.callback_data))
 
     if data := results:
         files = data["files"]
@@ -469,15 +470,15 @@ async def leechDetailPage(ctx: BotContext[CallbackQueryEvent], fs=True):
 
     await ctx.event.answer(callback=AppPage(components=comps))
 
-    if data := results:
-        try:
-            del editTask[userId]
-        except Exception as er:
-            print(er)
-        fs = False
-    if fs:
-        print("managing", 286)
-        await manageUpdatePage(ctx, ctx.event.callback_data, start=True)
+#    if data := results:
+#        try:
+#            del editTask[userId]
+#        except Exception as er:
+#            print(er)
+#        fs = False
+#    if fs:
+#        print("managing", 286)
+#        await manageUpdatePage(ctx, ctx.event.callback_data, start=True)
 
 
 async def onStartTask(ctx: BotContext[CallbackQueryEvent]):
